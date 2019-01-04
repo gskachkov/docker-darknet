@@ -1,32 +1,79 @@
-FROM alpine:3.4
-MAINTAINER think@hotmail.de
+FROM ubuntu:18.04
+MAINTAINER gskachkov@gmail.com
+
+ENV APP_DIR /darknet
 
 COPY darknet.sh /
-RUN chmod +x darknet.sh \
- && apk add --update --no-cache \
-    build-base curl \
-    make \
-    gcc \
-    git \
-    perl \
- && git clone https://github.com/pjreddie/darknet.git \
- && (cd /darknet && make && rm -rf scripts src results obj .git) \
- && curl -O http://pjreddie.com/media/files/extraction.weights \
- && apk del \
-    build-base \
-    ca-certificates \
-    curl \
-    gcc \
-    git \
-    libcurl \
-    libgcc \
-    libssh2 \
-    pcre \
-    perl \
-    make \
-    musl-dev \
- && rm -rf /var/cache/apk/*
+COPY entrypoint1.sh /
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY app.ini /app.ini
 
-WORKDIR "/darknet"
-ENTRYPOINT ["/darknet.sh"]
-CMD ["classifier", "predict", "cfg/imagenet22k.dataset", "cfg/extraction.cfg", "/extraction.weights"]
+RUN chmod +x darknet.sh \
+ && chmod +x entrypoint1.sh
+
+# && apk add --update --no-cache \
+#    build-base curl \
+#    make \
+#    gcc \
+#    git \
+#    perl \
+#    uwsgi-python nginx gfortran py2-pip python-dev \
+#    jpeg-dev zlib-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    make \
+    git \
+    gcc \
+    perl \
+    libfreetype6-dev \
+    libhdf5-serial-dev \
+    libpng-dev \
+    libzmq3-dev \
+    pkg-config \
+    python \
+    python-dev \
+    rsync \
+    software-properties-common \
+    unzip \
+    python-pip \
+    python-setuptools \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LIBRARY_PATH=/lib:/usr/lib
+
+RUN curl -o yolov3-laptop_1300.weights -L https://www.dropbox.com/s/n21etx0mvs8jwdq/yolov3-laptop_1300.weights?dl=1
+
+RUN pip2 install --upgrade pip
+RUN pip2 install cython
+RUN pip2 install numpy
+RUN pip2 install Pillow
+RUN pip2 install flask
+RUN pip2 install flask-jsonpify
+RUN pip2 install flask-restful
+RUN pip2 install flask_uploads 
+RUN rm -rf /var/cache/apk/*
+
+
+RUN git clone https://github.com/gskachkov/darknet.git && chmod 777 /run/ -R && chmod 777 /root/ -R
+RUN (cd /darknet && make && rm -rf scripts src results obj .git) 
+
+COPY entrypoint1.sh /darknet/entrypoint1.sh
+
+RUN curl -o yolov3-laptop_1300.weights -L https://www.dropbox.com/s/n21etx0mvs8jwdq/yolov3-laptop_1300.weights?dl=1
+RUN chmod +x yolov3-laptop_1300.weights
+RUN ls
+RUN ls ./yolov3-laptop_1300.weights
+COPY ./yolov3-laptop_1300.weights ./darknet/yolov3-laptop_1300.weights
+
+# RUN rm -rf yolov3-laptop_1300.weights
+
+WORKDIR ${APP_DIR}
+
+EXPOSE 8080
+
+## WORKDIR "/darknet"
+ENTRYPOINT ["/entrypoint1.sh"]
+CMD ["detector", "test", "cfg/laptop.data", "cfg/yolov3-laptop.cfg", "/yolov3-laptop_1300.weights"]
